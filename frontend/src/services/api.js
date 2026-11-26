@@ -56,7 +56,6 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute) {
       if (isRefreshing) {
-        // Queue pending requests while refreshing
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         })
@@ -116,6 +115,33 @@ export const authApi = {
   },
   logout: async () => {
     const response = await apiClient.post('/auth/logout');
+    return response.data;
+  },
+};
+
+export const shopifyApi = {
+  connect: async (shopDomain) => {
+    const response = await apiClient.post('/shopify/connect', { shopDomain });
+    return response.data;
+  },
+  getStatus: async () => {
+    const response = await apiClient.get('/shopify/status');
+    return response.data;
+  },
+  disconnect: async () => {
+    const response = await apiClient.delete('/shopify/disconnect');
+    return response.data;
+  },
+  importOrders: async () => {
+    const response = await apiClient.post('/shopify/orders/import');
+    return response.data;
+  },
+  getImportStatus: async () => {
+    const response = await apiClient.get('/shopify/orders/import/status');
+    return response.data;
+  },
+  getImportHistory: async (page = 1, limit = 10) => {
+    const response = await apiClient.get(`/shopify/orders/import/history?page=${page}&limit=${limit}`);
     return response.data;
   },
 };

@@ -22,6 +22,30 @@ const databaseProviders = [
     provide: 'REFRESH_TOKEN_REPOSITORY',
     useValue: db.RefreshToken,
   },
+  {
+    provide: 'SHOPIFY_STORE_REPOSITORY',
+    useValue: db.ShopifyStore,
+  },
+  {
+    provide: 'CUSTOMER_REPOSITORY',
+    useValue: db.Customer,
+  },
+  {
+    provide: 'ORDER_REPOSITORY',
+    useValue: db.Order,
+  },
+  {
+    provide: 'ORDER_ITEM_REPOSITORY',
+    useValue: db.OrderItem,
+  },
+  {
+    provide: 'PRODUCT_REPOSITORY',
+    useValue: db.Product,
+  },
+  {
+    provide: 'IMPORT_HISTORY_REPOSITORY',
+    useValue: db.ImportHistory,
+  },
 ];
 
 module.exports = {

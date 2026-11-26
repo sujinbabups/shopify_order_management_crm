@@ -3,6 +3,7 @@ const { ConfigModule } = require('@nestjs/config');
 const { DatabaseModule } = require('./database/database.module');
 const { AuthModule } = require('./modules/auth/auth.module');
 const { UsersModule } = require('./modules/users/users.module');
+const { ShopifyModule } = require('./modules/shopify/shopify.module');
 const { AppController } = require('./app.controller');
 const { LoggerMiddleware } = require('./common/middleware/logger.middleware');
 
@@ -15,6 +16,7 @@ const { LoggerMiddleware } = require('./common/middleware/logger.middleware');
     DatabaseModule,
     UsersModule,
     AuthModule,
+    ShopifyModule,
   ],
   controllers: [AppController],
   providers: [],

@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { Login } from '../pages/auth/Login';
 import { Register } from '../pages/auth/Register';
 import { Dashboard } from '../pages/Dashboard';
+import { ShopifyIntegration } from '../pages/shopify/ShopifyIntegration';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
 const ProtectedRoute = ({ children }) => {
@@ -68,6 +69,14 @@ export const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/shopify"
+        element={
+          <ProtectedRoute>
+            <ShopifyIntegration />
           </ProtectedRoute>
         }
       />
