@@ -276,6 +276,111 @@ class ShopifyApiService {
       endCursor: null,
     };
   }
+
+  /**
+   * Create an order in Shopify via Admin REST /orders.json API
+   */
+  async createOrder(shopDomain, accessToken, orderData) {
+    const payload = {
+      order: {
+        email: orderData.email || orderData.customer?.email,
+        phone: orderData.customer?.phone || undefined,
+        financial_status: orderData.financialStatus || 'paid',
+        currency: orderData.currency || 'USD',
+        customer: orderData.customer
+          ? {
+              first_name: orderData.customer.firstName,
+              last_name: orderData.customer.lastName,
+              email: orderData.customer.email,
+              phone: orderData.customer.phone || undefined,
+            }
+          : undefined,
+        line_items: (orderData.lineItems || []).map((item) => ({
+          title: item.productTitle || item.title,
+          price: item.unitPrice,
+          quantity: item.quantity,
+          sku: item.sku || undefined,
+          variant_id: item.variantId || undefined,
+        })),
+        note: orderData.note || 'Created from Mini Order Management CRM',
+      },
+    };
+
+    const { data } = await this.restRequest(
+      shopDomain,
+      accessToken,
+      '/orders.json',
+      'POST',
+      payload
+    );
+
+    const raw = data?.order;
+    if (!raw) {
+      throw new Error('Shopify did not return created order payload');
+    }
+
+    const lineItems = (raw.line_items || []).map((item) => ({
+      id: String(item.id),
+      title: item.title,
+      variantTitle: item.variant_title,
+      sku: item.sku,
+      quantity: item.quantity,
+      unitPrice: parseFloat(item.price || 0),
+      totalPrice: parseFloat(item.price || 0) * (item.quantity || 1),
+      productId: item.product_id ? String(item.product_id) : null,
+      productTitle: item.title,
+    }));
+
+    return {
+      id: String(raw.id),
+      orderNumber: String(raw.order_number || raw.id),
+      name: raw.name,
+      financialStatus: (raw.financial_status || 'paid').toLowerCase(),
+      fulfillmentStatus: raw.fulfillment_status ? raw.fulfillment_status.toLowerCase() : null,
+      totalAmount: parseFloat(raw.total_price || 0),
+      currency: raw.currency || 'USD',
+      createdAt: raw.created_at || new Date().toISOString(),
+      customer: raw.customer
+        ? {
+            id: String(raw.customer.id),
+            firstName: raw.customer.first_name,
+            lastName: raw.customer.last_name,
+            email: raw.customer.email,
+            phone: raw.customer.phone,
+          }
+        : null,
+      lineItems,
+    };
+  }
+
+  /**
+   * Fetch products from Shopify catalog
+   */
+  async fetchProducts(shopDomain, accessToken, { limit = 50 } = {}) {
+    const { data } = await this.restRequest(
+      shopDomain,
+      accessToken,
+      `/products.json?limit=${limit}`
+    );
+    const rawProducts = data?.products || [];
+
+    return rawProducts.map((p) => {
+      const firstVariant = p.variants?.[0];
+      return {
+        id: String(p.id),
+        title: p.title,
+        sku: firstVariant?.sku || null,
+        price: parseFloat(firstVariant?.price || 0),
+        variantId: firstVariant ? String(firstVariant.id) : null,
+        variants: (p.variants || []).map((v) => ({
+          id: String(v.id),
+          title: v.title,
+          sku: v.sku,
+          price: parseFloat(v.price || 0),
+        })),
+      };
+    });
+  }
 }
 
 module.exports = { ShopifyApiService };

@@ -48,7 +48,6 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Do not attempt to refresh for auth routes like login, register, or refresh itself
     const isAuthRoute =
       originalRequest?.url?.includes('/auth/login') ||
       originalRequest?.url?.includes('/auth/register') ||
@@ -142,6 +141,47 @@ export const shopifyApi = {
   },
   getImportHistory: async (page = 1, limit = 10) => {
     const response = await apiClient.get(`/shopify/orders/import/history?page=${page}&limit=${limit}`);
+    return response.data;
+  },
+};
+
+export const ordersApi = {
+  create: async (orderData, idempotencyKey = null) => {
+    const headers = idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : {};
+    const response = await apiClient.post('/orders', orderData, { headers });
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await apiClient.get(`/orders/${id}`);
+    return response.data;
+  },
+  list: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await apiClient.get(`/orders?${query}`);
+    return response.data;
+  },
+};
+
+export const customersApi = {
+  list: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await apiClient.get(`/customers?${query}`);
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await apiClient.get(`/customers/${id}`);
+    return response.data;
+  },
+};
+
+export const productsApi = {
+  list: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await apiClient.get(`/products?${query}`);
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await apiClient.get(`/products/${id}`);
     return response.data;
   },
 };

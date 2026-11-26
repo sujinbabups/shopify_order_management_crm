@@ -17,7 +17,7 @@ class CryptoUtil {
   static encrypt(plaintext) {
     if (!plaintext) return null;
     const iv = crypto.randomBytes(IV_LENGTH);
-    const key = this.getKey();
+    const key = CryptoUtil.getKey();
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
     let encrypted = cipher.update(plaintext, 'utf8', 'hex');
@@ -43,7 +43,7 @@ class CryptoUtil {
       const [ivHex, authTagHex, encryptedHex] = parts;
       const iv = Buffer.from(ivHex, 'hex');
       const authTag = Buffer.from(authTagHex, 'hex');
-      const key = this.getKey();
+      const key = CryptoUtil.getKey();
 
       const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
       decipher.setAuthTag(authTag);
