@@ -37,8 +37,10 @@ async function bootstrap() {
 
   // CORS Configuration
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const cleanFrontendUrl = frontendUrl.replace(/\/$/, '');
   const allowedOrigins = [
-    frontendUrl,
+    cleanFrontendUrl,
+    `${cleanFrontendUrl}/`,
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
@@ -51,11 +53,12 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl) or any localhost port during development
+      // Allow requests with no origin, matched origin, any localhost, or any render.com origin
       if (
         !origin ||
         allowedOrigins.includes(origin) ||
-        /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+        /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+        /\.onrender\.com$/.test(new URL(origin).hostname)
       ) {
         return callback(null, true);
       }
@@ -98,8 +101,8 @@ async function bootstrap() {
   app.use('/api/v1/auth', authLimiter);
 
   const port = process.env.PORT || 5000;
-  await app.listen(port);
-  console.log(`Server is running on: http://localhost:${port}/api/v1`);
+  await app.listen(port, '0.0.0.0');
+  console.log(`Server is running on: http://0.0.0.0:${port}/api/v1`);
   console.log(`Health check: http://localhost:${port}/api/v1/health`);
 }
 

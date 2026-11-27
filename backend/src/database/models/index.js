@@ -13,18 +13,33 @@ const initWebhookEventModel = require('./webhook-event.model');
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env] || dbConfig.development;
 
-const sequelize = new Sequelize(
-  config.database,
-  config.username,
-  config.password,
-  {
-    host: config.host,
-    port: config.port,
-    dialect: config.dialect,
-    logging: config.logging,
+let sequelize;
+if (process.env.DATABASE_URL) {
+  sequelize = new Sequelize(process.env.DATABASE_URL, {
+    dialect: 'postgres',
+    logging: config.logging || false,
+    dialectOptions: {
+      ssl: process.env.DB_SSL === 'false' ? false : {
+        require: true,
+        rejectUnauthorized: false,
+      },
+    },
     pool: config.pool,
-  }
-);
+  });
+} else {
+  sequelize = new Sequelize(
+    config.database,
+    config.username,
+    config.password,
+    {
+      host: config.host,
+      port: config.port,
+      dialect: config.dialect,
+      logging: config.logging,
+      pool: config.pool,
+    }
+  );
+}
 
 const User = initUserModel(sequelize);
 const RefreshToken = initRefreshTokenModel(sequelize);
