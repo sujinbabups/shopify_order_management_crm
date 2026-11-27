@@ -7,6 +7,7 @@ const { ShopifyModule } = require('./modules/shopify/shopify.module');
 const { CustomersModule } = require('./modules/customers/customers.module');
 const { ProductsModule } = require('./modules/products/products.module');
 const { OrdersModule } = require('./modules/orders/orders.module');
+const { WebhooksModule } = require('./modules/webhooks/webhooks.module');
 const { AppController } = require('./app.controller');
 const { LoggerMiddleware } = require('./common/middleware/logger.middleware');
 
@@ -23,6 +24,7 @@ const { LoggerMiddleware } = require('./common/middleware/logger.middleware');
     CustomersModule,
     ProductsModule,
     OrdersModule,
+    WebhooksModule,
   ],
   controllers: [AppController],
   providers: [],

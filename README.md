@@ -36,6 +36,24 @@ A production-conscious Mini Order Management CRM built with a **Node.js NestJS**
   - Transactional rollback: if database persistence fails, all records roll back cleanly and recovery info is returned.
   - Rich order confirmation view displaying the Shopify order number (e.g. `#1002`), customer info, line items summary, and receipt details.
 
+- **Phase 4: Shopify Webhook Integration & Real-Time Synchronization**
+  - Webhook listener endpoint at `POST /api/v1/webhooks/shopify` accessible publicly to Shopify.
+  - Cryptographic HMAC-SHA256 signature verification over unmodified raw request body buffers before payload parsing.
+  - Automated subscription management for `orders/create` and `orders/updated` webhook topics via Shopify Admin API.
+  - Persistent `WebhookEvent` database model with JSONB payload storage, delivery tracking, attempts, and execution statuses (`PENDING`, `PROCESSING`, `PROCESSED`, `FAILED`).
+  - Strict deduplication and concurrency protection via compound database constraint on `[shopDomain, shopifyWebhookId]`.
+  - Transactional synchronization in `sequelize.transaction` ensuring customer resolution, order status updates, and line item recreation are completely atomic.
+  - Out-of-order event handling: handles `orders/updated` arriving before `orders/create` safely.
+  - Manual recovery and retry endpoints (`POST /api/v1/webhooks/retry/:id`) allowing CRM administrators to reprocess failed webhook events.
+  - Modern CRM integration UI at `/shopify` featuring live webhook health status, subscribed topic badges, activity metrics, and an audit table with inline retry buttons.
+
+- **Phase 5: Order Management, Details, Search, Filtering, Sorting & Live Analytics**
+  - Dedicated Order Management interface at `/orders` with real-time multi-field search (order name, order number, customer name, customer email).
+  - Multi-criteria filtering by financial status (`paid`, `pending`, `refunded`, `partially_paid`) and fulfillment status (`fulfilled`, `unfulfilled`, `partial`).
+  - Multi-column sorting: Date (Newest / Oldest first), Amount (Highest / Lowest first), Order # (A-Z).
+  - Deep-dive Order Details view at `/orders/:id` displaying full customer profile, Shopify sync metadata, financial breakdown, and line items table with variants and SKUs.
+  - Live CRM Business Dashboard at `/dashboard` featuring aggregated revenue from PostgreSQL (`SUM(totalAmount)`), active order count, customer count, store connectivity state, recent orders feed, and quick-action shortcuts.
+
 ---
 
 ## 2. Technology Stack
@@ -126,17 +144,24 @@ shopify-order-crm/
 │   │   │   │   ├── customers.module.js
 │   │   │   │   ├── customers.controller.js  # Customer search & retrieval
 │   │   │   │   └── customers.service.js
-│   │   │   └── products/                # Products module (Phase 3)
-│   │   │       ├── products.module.js
-│   │   │       ├── products.controller.js   # Catalog search & retrieval
-│   │   │       └── products.service.js
+│   │   │   ├── products/                # Products module (Phase 3)
+│   │   │   │   ├── products.module.js
+│   │   │   │   ├── products.controller.js   # Catalog search & retrieval
+│   │   │   │   └── products.service.js
+│   │   │   └── webhooks/                # Webhooks module (Phase 4)
+│   │   │       ├── webhooks.module.js
+│   │   │       ├── webhooks.controller.js   # Public webhook receiver & admin management
+│   │   │       ├── webhooks.service.js      # Deduplication, event tracking & retries
+│   │   │       ├── webhook-verification.service.js # Raw-body HMAC-SHA256 timing-safe verification
+│   │   │       └── webhook-processing.service.js   # Transactional order/customer synchronization
 │   │   ├── app.controller.js
 │   │   ├── app.module.js
 │   │   └── main.js
 │   ├── test/
 │   │   ├── auth.spec.js                 # Authentication e2e test suite (13 tests)
 │   │   ├── shopify.spec.js              # Shopify integration & order import test suite (15 tests)
-│   │   └── orders.spec.js               # CRM order creation & persistence test suite (17 tests)
+│   │   ├── orders.spec.js               # CRM order creation & persistence test suite (17 tests)
+│   │   └── webhooks.spec.js             # Shopify webhook verification & sync test suite (15 tests)
 │   ├── .babelrc
 │   ├── .sequelizerc
 │   ├── .env.example
@@ -327,12 +352,13 @@ All endpoints are prefixed with `/api/v1`.
 | `GET` | `/shopify/orders/import/status` | JWT Bearer | Returns latest synchronization status and stats |
 | `GET` | `/shopify/orders/import/history` | JWT Bearer | Returns historical synchronization records |
 
-### Orders Endpoints (Phase 3)
+### Orders Endpoints (Phase 3 & Phase 5)
 | Method | Endpoint | Protection | Description |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/orders` | JWT Bearer | Creates order in Shopify and persists to PostgreSQL (`x-idempotency-key` supported) |
+| `GET` | `/orders/metrics/dashboard` | JWT Bearer | Aggregates revenue, order counts, status breakdown, and recent orders |
 | `GET` | `/orders/:id` | JWT Bearer | Retrieves single order details with customer and line items |
-| `GET` | `/orders` | JWT Bearer | Paginated order listing with status and search filters |
+| `GET` | `/orders` | JWT Bearer | Paginated order listing with multi-field search, status filters, and sorting |
 
 ### Customers Endpoints (Phase 3)
 | Method | Endpoint | Protection | Description |
@@ -346,11 +372,21 @@ All endpoints are prefixed with `/api/v1`.
 | `GET` | `/products` | JWT Bearer | Catalog lookup from database (with Shopify fallback) |
 | `GET` | `/products/:id` | JWT Bearer | Retrieves single product details |
 
+### Webhook Endpoints (Phase 4)
+| Method | Endpoint | Protection | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/webhooks/shopify` | Public (Shopify HMAC) | Receiver for `orders/create` & `orders/updated` webhooks |
+| `GET` | `/webhooks/events` | JWT Bearer | Paginated webhook audit logs with status filter |
+| `GET` | `/webhooks/status` | JWT Bearer | Live activity statistics (total, processed, failed, pending) |
+| `POST` | `/webhooks/retry/:id` | JWT Bearer (`ADMIN`) | Manually re-processes a failed webhook event |
+| `POST` | `/shopify/webhooks/register`| JWT Bearer (`ADMIN`) | Registers `orders/create` and `orders/updated` on Shopify |
+| `GET` | `/shopify/webhooks` | JWT Bearer | Fetches registered webhooks from Shopify Admin API |
+
 ---
 
 ## 10. Automated Testing
 
-To run the complete automated test suite across all implemented phases:
+To run the complete automated test suite across all 4 implemented phases:
 
 ```bash
 cd backend
@@ -378,7 +414,7 @@ npm test
   - Shopify API failure handling (502 / 429 rate limit) without data corruption
   - Database transaction rollback on write error
   - Role-based authorization checks (rejecting unauthenticated & non-admin operations)
-- **`test/orders.spec.js`** (17 tests):
+- **`test/orders.spec.js`** (20 tests):
   - Scenario 1 & 8: Successful Shopify order creation via `/orders.json` and PostgreSQL persistence with correct calculated totals
   - Scenario 2: Validation rejection on missing customer information (400 Bad Request)
   - Scenario 3: Validation rejection on invalid customer email format (400 Bad Request)
@@ -397,7 +433,26 @@ npm test
   - Product catalog listing (`GET /api/v1/products`)
   - Order details retrieval with customer & items associations (`GET /api/v1/orders/:id`)
   - Order 404 handler for non-existent order ID
-- **Total:** `45 passed, 45 total` across 3 suites (100% passing).
+  - CRM dashboard metrics aggregation (`GET /api/v1/orders/metrics/dashboard`)
+  - Multi-field search and financial status filtering
+  - Total amount sorting (descending order)
+- **`test/webhooks.spec.js`** (15 tests):
+  - Scenario 1: Valid webhook signature verification (200 OK)
+  - Scenario 2: Forged / tampered HMAC rejection (401 Unauthorized)
+  - Scenario 3: Missing signature header rejection (400 Bad Request)
+  - Scenario 8: Unknown or unconnected Shopify store rejection (400 Bad Request)
+  - Scenario 4 & 14: `orders/create` real-time order, customer, line-item, and product persistence
+  - Scenario 5: `orders/updated` status, price, and line-item synchronization
+  - Scenario 6: Duplicate webhook delivery detection and idempotent acknowledgement
+  - Scenario 7: Safe concurrent duplicate delivery handling via database unique constraints
+  - Scenario 9: Malformed or missing payload handling (400 Bad Request with FAILED event status)
+  - Scenario 10 & 11: Database transaction rollback on persistence failure and failure logging
+  - Scenario 12 & 13: Failed event manual recovery via retry endpoint without duplicate records
+  - Webhook status summary verification (`GET /api/v1/webhooks/status`)
+  - Paginated webhook audit logs (`GET /api/v1/webhooks/events`)
+  - Automated webhook registration on Shopify (`POST /api/v1/shopify/webhooks/register`)
+  - Registered webhooks inspection (`GET /api/v1/shopify/webhooks`)
+- **Total:** `63 passed, 63 total` across 4 suites (100% passing).
 
 ---
 
@@ -410,3 +465,38 @@ npm test
 4. **Atomic Transactions**: Local database writes (`Customer`, `Order`, `OrderItem`, `Product`) execute inside `sequelize.transaction(...)`. A failure at any point rolls back all table modifications.
 5. **Safe Failure Recovery**: In the unlikely event that Shopify creates an order but local persistence fails, a descriptive 500 error is returned with `shopifyOrderId` and `shopifyOrderNumber` so the administrator can reconcile during the next sync.
 6. **Frontend Experience**: Multi-section form (`/orders/create`) with dynamic line items, customer mode toggle (new vs. existing with search), instant subtotal updates, loading states, error alerts, and a full order confirmation view with direct action to create subsequent orders.
+
+---
+
+## 12. Phase 4: Shopify Webhook Architecture & Real-Time Sync
+
+### Architecture Highlights:
+1. **Raw Body Preservation**: Express body-parser uses `verify: (req, res, buf) => { req.rawBody = buf; }` to preserve byte-exact incoming buffers before JSON parsing.
+2. **Timing-Safe HMAC Verification**: `crypto.timingSafeEqual` verifies that the `x-shopify-hmac-sha256` header matches the computed HMAC-SHA256 signature using `SHOPIFY_API_SECRET`.
+3. **Store Validation**: Validates `x-shopify-shop-domain` against registered active stores in PostgreSQL before processing.
+4. **Database-Level Deduplication**: Enforces a unique index on `[shopDomain, shopifyWebhookId]`. If Shopify delivers duplicate or concurrent webhooks, the system detects this and returns 200 OK without re-processing.
+5. **Atomic Transactions & Out-of-Order Safety**:
+   - `orders/create`: Upserts Customer, creates Order and Line Items, registers Products.
+   - `orders/updated`: Locates existing order (or creates if received out of order), updates financial/fulfillment status, and refreshes line items atomically.
+6. **Dead-Letter Audit & Manual Recovery**: Failed webhook deliveries are marked `FAILED` with error messages in `webhook_events`. Administrators can review them and trigger `POST /api/v1/webhooks/retry/:id` from the CRM UI.
+7. **CRM Frontend UI**: Real-time webhook configuration card at `/shopify` displaying active endpoint, security status, registered topics, activity summary metrics, and delivery audit table with inline retry buttons.
+
+---
+
+## 13. Phase 5: Order Management, Details & Live Dashboard Analytics
+
+### Key Features & Workflow:
+1. **Interactive Order Listing (`/orders`)**:
+   - Tabular layout rendering all synced and CRM-placed orders.
+   - Real-time search across order names (`#1001`), order numbers, customer names, and emails.
+   - Status filters: Financial (`paid`, `pending`, `refunded`, `partially_paid`) and Fulfillment (`fulfilled`, `unfulfilled`, `partial`).
+   - Multi-column sorting: Date (Newest/Oldest), Total Amount (Highest/Lowest), and Order Name.
+   - Server-side pagination controls with page indicators.
+2. **Comprehensive Order Details (`/orders/:id`)**:
+   - Deep inspection of individual orders: customer information card, store linkage metadata, payment totals, and line items table with variant titles and SKUs.
+3. **Live Business Analytics Dashboard (`/dashboard`)**:
+   - Real-time metrics powered by `GET /api/v1/orders/metrics/dashboard`.
+   - Aggregated revenue computed from database records (`SUM(totalAmount)`).
+   - Counts for active orders, customers, and store connection status.
+   - Recent orders feed with direct links to view details.
+   - Quick action shortcuts for placing new orders or initiating store synchronizations.

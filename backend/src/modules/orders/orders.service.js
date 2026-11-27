@@ -352,32 +352,95 @@ class OrdersService {
   }
 
   /**
-   * List orders with pagination and search
+   * List orders with pagination, search, status filters, and sorting
    */
-  async findAll({ search = '', status = '', page = 1, limit = 20 } = {}) {
+  async findAll({
+    search = '',
+    status = '',
+    financialStatus = '',
+    fulfillmentStatus = '',
+    startDate = null,
+    endDate = null,
+    sortBy = 'date_desc',
+    page = 1,
+    limit = 20,
+  } = {}) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
     const offset = (pageNum - 1) * limitNum;
 
     const where = {};
-    if (status) {
-      where.financialStatus = status;
+    const effectiveFinancialStatus = financialStatus || status;
+    if (effectiveFinancialStatus && effectiveFinancialStatus !== 'all') {
+      where.financialStatus = effectiveFinancialStatus;
     }
+    if (fulfillmentStatus && fulfillmentStatus !== 'all') {
+      if (fulfillmentStatus === 'unfulfilled') {
+        where.fulfillmentStatus = { [Op.or]: [null, 'unfulfilled', 'null'] };
+      } else {
+        where.fulfillmentStatus = fulfillmentStatus;
+      }
+    }
+
+    if (startDate || endDate) {
+      where.orderDate = where.orderDate || {};
+      if (startDate) {
+        where.orderDate[Op.gte] = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.orderDate[Op.lte] = end;
+      }
+    }
+
     if (search && search.trim()) {
+      const term = `%${search.trim()}%`;
       where[Op.or] = [
-        { orderName: { [Op.iLike]: `%${search.trim()}%` } },
-        { shopifyOrderNumber: { [Op.iLike]: `%${search.trim()}%` } },
+        { orderName: { [Op.iLike]: term } },
+        { shopifyOrderNumber: { [Op.iLike]: term } },
+        { '$customer.email$': { [Op.iLike]: term } },
+        { '$customer.firstName$': { [Op.iLike]: term } },
+        { '$customer.lastName$': { [Op.iLike]: term } },
       ];
+    }
+
+    // Sort mapping
+    let orderClause = [['orderDate', 'DESC']];
+    switch (sortBy) {
+      case 'date_asc':
+        orderClause = [['orderDate', 'ASC']];
+        break;
+      case 'date_desc':
+        orderClause = [['orderDate', 'DESC']];
+        break;
+      case 'total_desc':
+        orderClause = [['totalAmount', 'DESC']];
+        break;
+      case 'total_asc':
+        orderClause = [['totalAmount', 'ASC']];
+        break;
+      case 'name_asc':
+        orderClause = [['orderName', 'ASC']];
+        break;
+      case 'name_desc':
+        orderClause = [['orderName', 'DESC']];
+        break;
+      default:
+        orderClause = [['orderDate', 'DESC']];
     }
 
     const { rows, count } = await this.orderRepository.findAndCountAll({
       where,
       limit: limitNum,
       offset,
-      order: [['orderDate', 'DESC']],
+      order: orderClause,
+      distinct: true,
+      subQuery: false,
       include: [
         { model: this.customerRepository, as: 'customer' },
         { model: this.orderItemRepository, as: 'items' },
+        { model: this.shopifyStoreRepository, as: 'store', attributes: ['id', 'shopDomain'] },
       ],
     });
 
@@ -389,6 +452,65 @@ class OrdersService {
         limit: limitNum,
         totalPages: Math.ceil(count / limitNum),
       },
+    };
+  }
+
+  /**
+   * Aggregate high-level CRM dashboard metrics
+   */
+  async getDashboardMetrics() {
+    const [totalOrders, totalCustomers, totalProducts, activeStore] = await Promise.all([
+      this.orderRepository.count(),
+      this.customerRepository.count(),
+      this.productRepository.count(),
+      this.shopifyStoreRepository.findOne({
+        where: { isActive: true },
+        attributes: ['id', 'shopDomain', 'connectedAt', 'scopes'],
+        order: [['connectedAt', 'DESC']],
+      }),
+    ]);
+
+    const revenueResult = await this.orderRepository.findAll({
+      attributes: [
+        [this.sequelize.fn('SUM', this.sequelize.col('totalAmount')), 'totalRevenue'],
+      ],
+      raw: true,
+    });
+    const totalRevenue = parseFloat(revenueResult[0]?.totalRevenue || 0);
+
+    const statusCounts = await this.orderRepository.findAll({
+      attributes: [
+        'financialStatus',
+        [this.sequelize.fn('COUNT', this.sequelize.col('id')), 'count'],
+      ],
+      group: ['financialStatus'],
+      raw: true,
+    });
+
+    const recentOrders = await this.orderRepository.findAll({
+      limit: 5,
+      order: [['orderDate', 'DESC']],
+      include: [
+        {
+          model: this.customerRepository,
+          as: 'customer',
+          attributes: ['firstName', 'lastName', 'email'],
+        },
+        { model: this.orderItemRepository, as: 'items' },
+      ],
+    });
+
+    return {
+      totalOrders,
+      totalRevenue,
+      totalCustomers,
+      totalProducts,
+      activeStore: activeStore ? activeStore.toJSON() : null,
+      statusCounts: (statusCounts || []).reduce((acc, row) => {
+        acc[row.financialStatus || 'unknown'] = parseInt(row.count, 10);
+        return acc;
+      }, {}),
+      recentOrders,
     };
   }
 

@@ -46,6 +46,10 @@ const databaseProviders = [
     provide: 'IMPORT_HISTORY_REPOSITORY',
     useValue: db.ImportHistory,
   },
+  {
+    provide: 'WEBHOOK_EVENT_REPOSITORY',
+    useValue: db.WebhookEvent,
+  },
 ];
 
 module.exports = {

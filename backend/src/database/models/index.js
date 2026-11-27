@@ -8,6 +8,7 @@ const initOrderModel = require('./order.model');
 const initOrderItemModel = require('./order-item.model');
 const initProductModel = require('./product.model');
 const initImportHistoryModel = require('./import-history.model');
+const initWebhookEventModel = require('./webhook-event.model');
 
 const env = process.env.NODE_ENV || 'development';
 const config = dbConfig[env] || dbConfig.development;
@@ -33,6 +34,7 @@ const Order = initOrderModel(sequelize);
 const OrderItem = initOrderItemModel(sequelize);
 const Product = initProductModel(sequelize);
 const ImportHistory = initImportHistoryModel(sequelize);
+const WebhookEvent = initWebhookEventModel(sequelize);
 
 // User & Auth Associations
 User.hasMany(RefreshToken, { foreignKey: 'userId', as: 'refreshTokens', onDelete: 'CASCADE' });
@@ -54,6 +56,10 @@ OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
 ShopifyStore.hasMany(ImportHistory, { foreignKey: 'shopifyStoreId', as: 'importHistories', onDelete: 'CASCADE' });
 ImportHistory.belongsTo(ShopifyStore, { foreignKey: 'shopifyStoreId', as: 'store' });
 
+// Store & WebhookEvent Associations
+ShopifyStore.hasMany(WebhookEvent, { foreignKey: 'shopDomain', sourceKey: 'shopDomain', as: 'webhookEvents', onDelete: 'CASCADE' });
+WebhookEvent.belongsTo(ShopifyStore, { foreignKey: 'shopDomain', targetKey: 'shopDomain', as: 'store' });
+
 const db = {
   sequelize,
   Sequelize,
@@ -65,6 +71,7 @@ const db = {
   OrderItem,
   Product,
   ImportHistory,
+  WebhookEvent,
 };
 
 module.exports = db;

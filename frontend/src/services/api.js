@@ -143,9 +143,37 @@ export const shopifyApi = {
     const response = await apiClient.get(`/shopify/orders/import/history?page=${page}&limit=${limit}`);
     return response.data;
   },
+  registerWebhooks: async () => {
+    const response = await apiClient.post('/shopify/webhooks/register');
+    return response.data;
+  },
+  getRegisteredWebhooks: async () => {
+    const response = await apiClient.get('/shopify/webhooks');
+    return response.data;
+  },
+};
+
+export const webhooksApi = {
+  getStatus: async () => {
+    const response = await apiClient.get('/webhooks/status');
+    return response.data;
+  },
+  listEvents: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await apiClient.get(`/webhooks/events?${query}`);
+    return response.data;
+  },
+  retryEvent: async (id) => {
+    const response = await apiClient.post(`/webhooks/retry/${id}`);
+    return response.data;
+  },
 };
 
 export const ordersApi = {
+  getDashboardMetrics: async () => {
+    const response = await apiClient.get('/orders/metrics/dashboard');
+    return response.data;
+  },
   create: async (orderData, idempotencyKey = null) => {
     const headers = idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : {};
     const response = await apiClient.post('/orders', orderData, { headers });

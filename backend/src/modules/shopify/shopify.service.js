@@ -6,25 +6,29 @@ const {
 } = require('@nestjs/common');
 const { ShopifyAuthService } = require('./shopify-auth.service');
 const { ShopifyOrderService } = require('./shopify-order.service');
+const { ShopifyApiService } = require('./shopify-api.service');
 
 @Injectable()
 @Dependencies(
   'SHOPIFY_STORE_REPOSITORY',
   'IMPORT_HISTORY_REPOSITORY',
   ShopifyAuthService,
-  ShopifyOrderService
+  ShopifyOrderService,
+  ShopifyApiService
 )
 class ShopifyService {
   constructor(
     shopifyStoreRepository,
     importHistoryRepository,
     shopifyAuthService,
-    shopifyOrderService
+    shopifyOrderService,
+    shopifyApiService
   ) {
     this.shopifyStoreRepository = shopifyStoreRepository;
     this.importHistoryRepository = importHistoryRepository;
     this.shopifyAuthService = shopifyAuthService;
     this.shopifyOrderService = shopifyOrderService;
+    this.shopifyApiService = shopifyApiService;
   }
 
   /**
@@ -130,6 +134,71 @@ class ShopifyService {
         limit: limitNum,
         totalPages: Math.ceil(count / limitNum),
       },
+    };
+  }
+
+  /**
+   * Register order webhooks (orders/create, orders/updated) on Shopify
+   */
+  async registerWebhooks() {
+    const store = await this.shopifyStoreRepository.findOne({
+      where: { isActive: true },
+      order: [['connectedAt', 'DESC']],
+    });
+
+    if (!store) {
+      throw new BadRequestException('No active Shopify store connected');
+    }
+
+    const appUrl = process.env.SHOPIFY_APP_URL || 'http://localhost:5000';
+    const webhookAddress = `${appUrl}/api/v1/webhooks/shopify`;
+    const topics = ['orders/create', 'orders/updated'];
+
+    const results = [];
+    for (const topic of topics) {
+      try {
+        const result = await this.shopifyApiService.registerWebhook(
+          store.shopDomain,
+          store.accessToken,
+          {
+            topic,
+            address: webhookAddress,
+          }
+        );
+        results.push({ topic, status: 'registered', result });
+      } catch (err) {
+        results.push({ topic, status: 'error', error: err.message });
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Shopify webhook registration processed',
+      data: results,
+    };
+  }
+
+  /**
+   * Fetch registered webhooks from Shopify
+   */
+  async getRegisteredWebhooks() {
+    const store = await this.shopifyStoreRepository.findOne({
+      where: { isActive: true },
+      order: [['connectedAt', 'DESC']],
+    });
+
+    if (!store) {
+      return { success: true, data: [] };
+    }
+
+    const webhooks = await this.shopifyApiService.fetchWebhooks(
+      store.shopDomain,
+      store.accessToken
+    );
+
+    return {
+      success: true,
+      data: webhooks,
     };
   }
 }

@@ -381,6 +381,57 @@ class ShopifyApiService {
       };
     });
   }
+
+  /**
+   * Register a webhook subscription on Shopify
+   */
+  async registerWebhook(shopDomain, accessToken, { topic, address, format = 'json' }) {
+    const payload = {
+      webhook: {
+        topic,
+        address,
+        format,
+      },
+    };
+
+    const response = await this.restRequest(
+      shopDomain,
+      accessToken,
+      '/webhooks.json',
+      'POST',
+      payload
+    );
+
+    return response?.data?.webhook || response?.data;
+  }
+
+  /**
+   * Fetch registered webhooks from Shopify
+   */
+  async fetchWebhooks(shopDomain, accessToken) {
+    const response = await this.restRequest(
+      shopDomain,
+      accessToken,
+      '/webhooks.json',
+      'GET'
+    );
+
+    return response?.data?.webhooks || [];
+  }
+
+  /**
+   * Delete a webhook subscription on Shopify
+   */
+  async deleteWebhook(shopDomain, accessToken, webhookId) {
+    const response = await this.restRequest(
+      shopDomain,
+      accessToken,
+      `/webhooks/${webhookId}.json`,
+      'DELETE'
+    );
+
+    return response?.data;
+  }
 }
 
 module.exports = { ShopifyApiService };

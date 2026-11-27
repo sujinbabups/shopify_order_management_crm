@@ -36,6 +36,20 @@ class OrdersController {
   }
 
   /**
+   * Get CRM dashboard metrics
+   * GET /api/v1/orders/metrics/dashboard
+   */
+  @Get('metrics/dashboard')
+  @HttpCode(HttpStatus.OK)
+  async getDashboardMetrics() {
+    const metrics = await this.ordersService.getDashboardMetrics();
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  /**
    * Get single order details with customer and line items
    * GET /api/v1/orders/:id
    */
@@ -51,16 +65,41 @@ class OrdersController {
   }
 
   /**
-   * List orders with pagination and filters
+   * List orders with pagination, search, status filters, and sorting
    * GET /api/v1/orders
    */
   @Get()
   @HttpCode(HttpStatus.OK)
-  @Bind(Query('search'), Query('status'), Query('page'), Query('limit'))
-  async listOrders(search = '', status = '', page = 1, limit = 20) {
+  @Bind(
+    Query('search'),
+    Query('status'),
+    Query('financialStatus'),
+    Query('fulfillmentStatus'),
+    Query('startDate'),
+    Query('endDate'),
+    Query('sortBy'),
+    Query('page'),
+    Query('limit')
+  )
+  async listOrders(
+    search = '',
+    status = '',
+    financialStatus = '',
+    fulfillmentStatus = '',
+    startDate = '',
+    endDate = '',
+    sortBy = 'date_desc',
+    page = 1,
+    limit = 20
+  ) {
     const { orders, pagination } = await this.ordersService.findAll({
       search,
       status,
+      financialStatus,
+      fulfillmentStatus,
+      startDate: startDate || null,
+      endDate: endDate || null,
+      sortBy,
       page,
       limit,
     });

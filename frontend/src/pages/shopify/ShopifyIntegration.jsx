@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { shopifyApi } from '../../services/api';
+import { shopifyApi, webhooksApi } from '../../services/api';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Alert } from '../../components/common/Alert';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
@@ -19,6 +19,10 @@ export const ShopifyIntegration = () => {
 
   const [importStats, setImportStats] = useState(null);
   const [importHistory, setImportHistory] = useState([]);
+  const [webhookSummary, setWebhookSummary] = useState(null);
+  const [webhookEvents, setWebhookEvents] = useState([]);
+  const [isRegisteringWebhooks, setIsRegisteringWebhooks] = useState(false);
+  const [retryingEventId, setRetryingEventId] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -32,8 +36,14 @@ export const ShopifyIntegration = () => {
       setConnectionStatus(statusRes.data);
 
       if (statusRes.data?.isConnected) {
-        const historyRes = await shopifyApi.getImportHistory(1, 5);
+        const [historyRes, webhookStatsRes, webhookEventsRes] = await Promise.all([
+          shopifyApi.getImportHistory(1, 5),
+          webhooksApi.getStatus().catch(() => ({ data: null })),
+          webhooksApi.listEvents({ limit: 5 }).catch(() => ({ data: [] })),
+        ]);
         setImportHistory(historyRes.data || []);
+        setWebhookSummary(webhookStatsRes.data || null);
+        setWebhookEvents(webhookEventsRes.data || []);
       }
     } catch (err) {
       setErrorMessage(err.response?.data?.message || err.message || 'Failed to load Shopify status');
@@ -133,6 +143,42 @@ export const ShopifyIntegration = () => {
       );
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleRegisterWebhooks = async () => {
+    setIsRegisteringWebhooks(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      await shopifyApi.registerWebhooks();
+      setSuccessMessage('Successfully registered orders/create and orders/updated webhook subscriptions on Shopify');
+      await loadStatusAndHistory();
+    } catch (err) {
+      setErrorMessage(
+        err.response?.data?.message || err.message || 'Failed to register webhooks on Shopify'
+      );
+    } finally {
+      setIsRegisteringWebhooks(false);
+    }
+  };
+
+  const handleRetryWebhook = async (eventId) => {
+    setRetryingEventId(eventId);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      await webhooksApi.retryEvent(eventId);
+      setSuccessMessage(`Successfully reprocessed webhook event: ${eventId}`);
+      await loadStatusAndHistory();
+    } catch (err) {
+      setErrorMessage(
+        err.response?.data?.message || err.message || 'Failed to reprocess webhook event'
+      );
+    } finally {
+      setRetryingEventId(null);
     }
   };
 
@@ -376,6 +422,172 @@ export const ShopifyIntegration = () => {
                             <td style={{ padding: '10px 12px', color: run.failed > 0 ? '#b91c1c' : '#64748b' }}>{run.failed}</td>
                             <td style={{ padding: '10px 12px', color: '#64748b' }}>
                               {new Date(run.startedAt).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Webhook Real-Time Synchronization Card */}
+          {connectionStatus?.isConnected && (
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+                    Shopify Webhook Integration & Real-Time Sync
+                  </h2>
+                  <p style={{ fontSize: '0.875rem', color: '#64748b', marginTop: '4px' }}>
+                    Automated real-time synchronization for Shopify order creation and update events.
+                  </p>
+                </div>
+                {isAdmin && (
+                  <button
+                    onClick={handleRegisterWebhooks}
+                    disabled={isRegisteringWebhooks}
+                    className="btn-primary"
+                    style={{ width: 'auto', backgroundColor: '#0284c7', borderColor: '#0284c7' }}
+                  >
+                    {isRegisteringWebhooks ? (
+                      <>
+                        <LoadingSpinner />
+                        <span>Registering Webhooks...</span>
+                      </>
+                    ) : (
+                      'Register Webhooks on Shopify'
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {/* Webhook Configuration & Topic Badges */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 600 }}>Webhook Endpoint</div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a', marginTop: '4px', fontFamily: 'monospace' }}>
+                      POST /api/v1/webhooks/shopify
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 600 }}>Security Verification</div>
+                    <div style={{ fontSize: '0.875rem', color: '#15803d', fontWeight: 600, marginTop: '4px' }}>
+                      ● HMAC-SHA256 (Raw Request Body)
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 600 }}>Active Subscribed Topics</div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <span className="role-pill" style={{ backgroundColor: '#e0e7ff', color: '#3730a3', fontSize: '0.75rem' }}>orders/create</span>
+                      <span className="role-pill" style={{ backgroundColor: '#e0e7ff', color: '#3730a3', fontSize: '0.75rem' }}>orders/updated</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Webhook Metrics Summary */}
+              {webhookSummary && (
+                <div style={{ marginBottom: '24px' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '12px', color: '#334155' }}>
+                    Webhook Activity Summary
+                  </h3>
+                  <div className="grid-cards" style={{ marginBottom: 0 }}>
+                    <div className="stat-card" style={{ padding: '16px', backgroundColor: '#f8fafc' }}>
+                      <div className="stat-card-title">Total Webhooks</div>
+                      <div className="stat-card-value" style={{ fontSize: '1.5rem' }}>{webhookSummary.total}</div>
+                    </div>
+                    <div className="stat-card" style={{ padding: '16px', backgroundColor: '#ecfdf5' }}>
+                      <div className="stat-card-title" style={{ color: '#047857' }}>Successfully Processed</div>
+                      <div className="stat-card-value" style={{ fontSize: '1.5rem', color: '#047857' }}>{webhookSummary.processed}</div>
+                    </div>
+                    <div className="stat-card" style={{ padding: '16px', backgroundColor: webhookSummary.failed > 0 ? '#fef2f2' : '#f8fafc' }}>
+                      <div className="stat-card-title" style={{ color: webhookSummary.failed > 0 ? '#b91c1c' : '#64748b' }}>Failed Events</div>
+                      <div className="stat-card-value" style={{ fontSize: '1.5rem', color: webhookSummary.failed > 0 ? '#b91c1c' : '#64748b' }}>
+                        {webhookSummary.failed}
+                      </div>
+                    </div>
+                    <div className="stat-card" style={{ padding: '16px', backgroundColor: '#f0f9ff' }}>
+                      <div className="stat-card-title" style={{ color: '#0369a1' }}>Pending / In-Flight</div>
+                      <div className="stat-card-value" style={{ fontSize: '1.5rem', color: '#0369a1' }}>{webhookSummary.pending + webhookSummary.processing}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Webhook Events Log */}
+              <div>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '12px', color: '#334155' }}>
+                  Recent Webhook Deliveries
+                </h3>
+                {webhookEvents.length === 0 ? (
+                  <p style={{ fontSize: '0.875rem', color: '#94a3b8' }}>No webhook events received yet.</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                          <th style={{ padding: '8px 12px' }}>Topic</th>
+                          <th style={{ padding: '8px 12px' }}>Status</th>
+                          <th style={{ padding: '8px 12px' }}>Order ID</th>
+                          <th style={{ padding: '8px 12px' }}>Attempts</th>
+                          <th style={{ padding: '8px 12px' }}>Received At</th>
+                          <th style={{ padding: '8px 12px' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {webhookEvents.map((evt) => (
+                          <tr key={evt.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 600 }}>
+                              <code>{evt.topic}</code>
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <span
+                                className="role-pill"
+                                style={{
+                                  backgroundColor:
+                                    evt.status === 'PROCESSED'
+                                      ? '#dcfce7'
+                                      : evt.status === 'FAILED'
+                                      ? '#fee2e2'
+                                      : '#e0e7ff',
+                                  color:
+                                    evt.status === 'PROCESSED'
+                                      ? '#15803d'
+                                      : evt.status === 'FAILED'
+                                      ? '#b91c1c'
+                                      : '#3730a3',
+                                }}
+                              >
+                                {evt.status}
+                              </span>
+                              {evt.errorMessage && (
+                                <div style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: '4px', maxWidth: '240px' }}>
+                                  {evt.errorMessage}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '0.8rem' }}>
+                              {evt.shopifyOrderId || '—'}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>{evt.attempts || 1}</td>
+                            <td style={{ padding: '10px 12px', color: '#64748b' }}>
+                              {new Date(evt.createdAt).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              {evt.status === 'FAILED' && isAdmin && (
+                                <button
+                                  onClick={() => handleRetryWebhook(evt.id)}
+                                  disabled={retryingEventId === evt.id}
+                                  className="btn-secondary"
+                                  style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#b91c1c', borderColor: '#fca5a5' }}
+                                >
+                                  {retryingEventId === evt.id ? 'Retrying...' : 'Retry'}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}

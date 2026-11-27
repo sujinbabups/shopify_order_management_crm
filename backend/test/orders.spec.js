@@ -666,5 +666,45 @@ describe('CRM Order Creation & Manual Order Placement (e2e)', () => {
 
       expect(response.body.success).toBe(false);
     });
+
+    it('should return CRM dashboard metrics (GET /api/v1/orders/metrics/dashboard)', async () => {
+      const response = await request(httpServer)
+        .get('/api/v1/orders/metrics/dashboard')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('totalOrders');
+      expect(response.body.data).toHaveProperty('totalRevenue');
+      expect(response.body.data).toHaveProperty('totalCustomers');
+      expect(response.body.data).toHaveProperty('totalProducts');
+      expect(response.body.data).toHaveProperty('recentOrders');
+      expect(Array.isArray(response.body.data.recentOrders)).toBe(true);
+    });
+
+    it('should filter orders by financialStatus and search query', async () => {
+      const response = await request(httpServer)
+        .get('/api/v1/orders?financialStatus=paid&search=100')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.pagination).toBeDefined();
+    });
+
+    it('should sort orders by totalAmount descending', async () => {
+      const response = await request(httpServer)
+        .get('/api/v1/orders?sortBy=total_desc')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      if (response.body.data.length >= 2) {
+        const first = parseFloat(response.body.data[0].totalAmount);
+        const second = parseFloat(response.body.data[1].totalAmount);
+        expect(first).toBeGreaterThanOrEqual(second);
+      }
+    });
   });
 });

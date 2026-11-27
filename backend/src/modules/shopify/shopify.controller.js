@@ -127,6 +127,29 @@ class ShopifyController {
   async getImportHistory(page = 1, limit = 10) {
     return this.shopifyService.getImportHistory(page, limit);
   }
+
+  /**
+   * Register order webhooks on connected Shopify store (ADMIN only)
+   * POST /api/v1/shopify/webhooks/register
+   */
+  @Post('webhooks/register')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  async registerWebhooks() {
+    return this.shopifyService.registerWebhooks();
+  }
+
+  /**
+   * List registered webhooks from Shopify
+   * GET /api/v1/shopify/webhooks
+   */
+  @Get('webhooks')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async getRegisteredWebhooks() {
+    return this.shopifyService.getRegisteredWebhooks();
+  }
 }
 
 module.exports = { ShopifyController };

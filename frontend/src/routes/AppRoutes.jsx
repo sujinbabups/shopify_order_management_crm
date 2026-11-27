@@ -5,6 +5,8 @@ import { Login } from '../pages/auth/Login';
 import { Register } from '../pages/auth/Register';
 import { Dashboard } from '../pages/Dashboard';
 import { ShopifyIntegration } from '../pages/shopify/ShopifyIntegration';
+import { OrdersList } from '../pages/orders/OrdersList';
+import { OrderDetail } from '../pages/orders/OrderDetail';
 import { CreateOrder } from '../pages/orders/CreateOrder';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
@@ -74,6 +76,22 @@ export const AppRoutes = () => {
         }
       />
       <Route
+        path="/orders"
+        element={
+          <ProtectedRoute>
+            <OrdersList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders/:id"
+        element={
+          <ProtectedRoute>
+            <OrderDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/orders/create"
         element={
           <ProtectedRoute>
@@ -81,7 +99,6 @@ export const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      <Route path="/orders" element={<Navigate to="/orders/create" replace />} />
       <Route
         path="/shopify"
         element={
